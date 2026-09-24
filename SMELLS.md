@@ -49,8 +49,8 @@ Three smells, each in a different part of the module. For each one, fill in all 
 
 **The principle it violates.** Decouple what varies: pay for decoupling only where change actually happens. Decoupling a change that never comes is complexity you pay for anyway.
 
-**What it makes expensive.** Because the constructor hardcodes createNotificationChannel(DEFAULT_NOTIFIER_CONFIG), the configurability the factory offers never reaches a caller.
-
+**What it makes expensive.** The layer charges for flexibility now, and still charges again when that flexibility is needed.
+- Concrete case: Adding a second channel (the change it was built for): the extension point is closed. registerChannel only accepts ChannelName, which is the union 'email', and NotifierConfig only has an email fromAddress. So adding SMS means editing notifierFactory.ts itself, plus the ReservationManager constructor, which hardcodes the default config.
 
 ---
 

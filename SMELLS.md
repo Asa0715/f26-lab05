@@ -115,24 +115,50 @@ One proposal for each milestone 1 smell you did not fix.
 
 ### Proposal A (not coded)
 
-**The problem.** Name it.
+**The problem.** God class (with divergent change). Apart from pricing, ReservationManager still does four unrelated jobs: the room registry, creating and cancelling bookings, notifications, and customer-facing text formatting. Any kind of change (receipt layout, notification channel, conflict rule) edits this one class, and the jobs are tangled. For example, formatClock is used by both the receipt and the conflict error message.
 
-**The decomposition.** What are the pieces, what does each own, and where do the rules live?
+**The decomposition.** Split it into pieces that each own one job. Keep ReservationManager as a thin facade with the same public methods and signatures, so it only passes calls to the pieces below:
 
-**One cost.** Something this actually costs. "No real downside" is not a cost.
+| Piece | Owns | Rules that live here |
+|---|---|---|
+| `RoomRegistry` | Stores rooms: `register` / `get` / `list` | What counts as an unknown room |
+| `BookingService` | Booking lifecycle: `create` / `cancel`, booking ids, conflict check | "Confirmed bookings in the same room cannot overlap"; "cancelling twice does nothing" |
+| `pricing.ts` (done) | The price of a booking | Premium, long-booking and evening rules |
+| `validation.ts` (unchanged) | Whether a request is valid | Opening hours, duration, capacity, etc. |
+| `BookingNotifier` | Tells the organizer about confirmations and cancellations, keeps the send log; gets a `NotificationChannel` through its constructor | Which event sends which subject |
+| `bookingFormat.ts` | Pure functions: `formatReceipt`, `formatDailySummary`, `formatClock`, `formatMoney` | How time and money look to customers |
+
+
+**One cost.** ReservationManager becomes a pass-through facade: every public method exists twice, once in the facade and once in the piece below. Each new operation has to be **added in both places and kept in sync**. Building the pieces (who creates the registry, the notifier and the service, and in what order they are passed in) also **moves into the constructor**. What used to be direct calls inside one class now takes four or five files to follow from start to end.
 
 ### Proposal B (not coded)
 
-**The problem.**
+**The problem.** Speculative over-abstraction. Notifications are built as a global registry, a factory and a config object, but there is only one channel (email). The only user, ReservationManager, hardcodes DEFAULT_NOTIFIER_CONFIG in its constructor, so the flexibility the layer promises never reaches a caller.
 
-**The decomposition.**
+**The decomposition.** Remove the factory layer, keep the interface that is actually useful, and choose the channel through constructor injection:
 
-**One cost.**
+| Piece | Owns | Rules that live here |
+|---|---|---|
+| `NotificationChannel` (kept) | What "send one message to one person" means: `send(recipient, subject, body)` | The sending contract every channel follows |
+| `EmailChannel` (kept) | Formats a message as an email and records it | The sender address (one default, only here) and the email header format |
+| `ReservationManager` constructor | Takes a new optional parameter `notifier: NotificationChannel = new EmailChannel()` | Email by default; callers can pass a different channel |
+| `notifierFactory.ts` (deleted) | — | `ChannelName`, `NotifierConfig`, `DEFAULT_NOTIFIER_CONFIG`, the global `builders` Map, `registerChannel`, `registeredChannels` and `createNotificationChannel` all go away |
+
+- Choosing a channel is up to whoever creates the manager, for example new ReservationManager(storage, new SmsChannel(...)). There is no global lookup.
+- Adding SMS means writing one new SmsChannel implements NotificationChannel, with no edits to existing files. Each channel keeps its own settings (such as a sender number) in its own constructor, not in a shared config.
+
+**One cost.** If SMS is added later and the channel has to be picked from a config value (for example channel: 'sms' in a settings file), someone has to write the code that turns that value into a channel object again.
 
 ### The thing that looks smelly but is fine
 
-**What it is.** File and method.
+**What it is.** 
 
-**Why it is fine.** Defend it with properties of the code, not with its line count.
+The defensive copies in **src/storage/inMemoryStorageProvider.ts**, in save, update, findById and findAll. Every time a booking goes in or comes out, it is copied with { ...booking } instead of handing out the object stored in the Map. Copying on every query looks like extra defensive code, the **phantom complexity** smell.
 
-**What would flip your verdict.** Name the change that would turn this into a real problem.
+**Why it is fine.** 
+
+The case it guards against really happens. Booking (types.ts) is a **plain mutable object with no readonly fields**, and the manager hands bookings straight to callers: createBooking, getBooking and listBookingsForRoom all return them. Without the copies, a caller writing booking.status = 'cancelled' would change the stored data directly and bypass cancelBooking: no cancellation notice is sent, yet findAvailableSlots already treats the slot as free. Phantom complexity guards against inputs that cannot occur. This guards against shared object references in JavaScript, which happen every time.
+
+**What would flip your verdict.** 
+
+If Booking gains a **nested object or array field**, such as attendeeEmails: string[] or a stored room: Room. { ...booking } only copies the top level, so **the nested array would still be shared:** a caller doing booking.attendeeEmails.push(...) would change the stored data. The code would then look like it protects the data while it no longer does, giving false safety. That is a real problem, and the fix is either a deep copy or making the type immutable.

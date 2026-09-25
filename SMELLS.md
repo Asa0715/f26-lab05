@@ -92,11 +92,7 @@ Reading the stored price looks cleaner, but it changes behavior: if a room's rat
 After the change, all 39 tests in npm test pass, npm run typecheck is clean, and no file under tests/ was edited. The change also only moves code. So every input should give the same result as before.
 
 **What the suite actually covers:**
-- The pricing group in booking.test.ts checks each rule on its own, through createBooking:
-  - base price: 12000
- - long-booking discount: 16200, using exactly 180 minutes, so it hits the edge
- - premium surcharge: 18400
- - evening discount: 11400, starting exactly at 17:00, also on the edge
+- The pricing group in booking.test.ts checks each rule on its own, through createBooking.
 - The revenue tests in reporting.test.ts check that the report total equals the sum of booking.priceCents, and compare against the fixed values 23400, 11700 and 11400. This shows that after the merge, the manager and the report still agree on the base price and the evening discount.
 - The formatDailySummary test indirectly checks stored prices (Confirmed total: $234.00).
 - The typecheck confirms that the public calculatePrice signature did not change and every call site still fits.

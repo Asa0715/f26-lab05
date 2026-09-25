@@ -65,7 +65,7 @@ I attack the pricing functionality - 'Duplication over reuse' smell. There are t
 - **The fix can be small and keep behavior exactly the same.** I compared the two pricing versions, and they calculate in the same steps: compute the base price and round, then apply premium, long-booking and evening multipliers in that order, rounding after each one. So merging them into one does not change the result for any input. The behavior is truly preserved.
 - **The other two smells cannot be fixed with a small change.**
   - Smell 2 (God class): it needs to be split into several classes, which touches a lot of code.
-  - Smell 3 (factory): registerChannel, createNotificationChannel and the rest are exported public API. Removing them, or changing the ReservationManager constructor signature, would change behavior for outside callers.
+  - Smell 3 (factory): no test in the suite checks notifications, so after removing the factory the tests could not show that the same messages are still sent. It is also not on the path of a likely change: nobody has asked for a second channel.
 
 **What changed.** Files and methods you touched, and what the code does differently now.
 
